@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import MCQPage from "./pages/MCQPage";
 
 export default function App() {
   const videoRef = useRef(null);
@@ -9,6 +10,8 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes countdown window
+  const [isStarted, setIsStarted] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   // 1. Handle Camera Access with proper error handling & stream management
   const getCamera = useCallback(async () => {
@@ -72,7 +75,10 @@ export default function App() {
   // 2. Handle Fullscreen Toggle
   const toggleFullScreen = useCallback(async () => {
     try {
-      if (!document.fullscreenElement) {
+      if (window.electronAPI && window.electronAPI.setFullScreen) {
+        const full = await window.electronAPI.setFullScreen();
+        setIsFullScreen(Boolean(full));
+      } else if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen();
       } else {
         await document.exitFullscreen();
@@ -119,6 +125,71 @@ export default function App() {
 
   // Both checks must be true to unlock the test
   const isReadyToStart = cameraStatus === "granted" && isFullScreen;
+
+  const handleQuizSubmit = useCallback(async () => {
+    // 1. Turn off camera hardware stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraStatus("idle");
+
+    // 2. Turn off Electron proctoring/kiosk/lock
+    if (window.electronAPI && window.electronAPI.exitExam) {
+      await window.electronAPI.exitExam();
+    }
+
+    // 3. Exit browser full-screen if active
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch (e) {
+        // ignore
+      }
+    }
+    setIsFullScreen(false);
+
+    // 4. Show thank you screen
+    setIsSubmitted(true);
+  }, []);
+
+  // Listen for force submit event (e.g. user confirmed quit on Cmd+Q)
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.onForceSubmit) {
+      const unsubscribe = window.electronAPI.onForceSubmit(() => {
+        handleQuizSubmit();
+      });
+      return unsubscribe;
+    }
+  }, [handleQuizSubmit]);
+
+  if (isSubmitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6 text-slate-100 select-none">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center shadow-2xl">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">
+            Assessment Submitted
+          </h2>
+          <p className="text-slate-400 text-sm leading-relaxed mb-6">
+            Thanks for attempting! All proctoring and monitoring sessions have been automatically terminated.
+          </p>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Proctoring Disengaged
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isStarted) {
+    return <MCQPage quizName="Random Quiz" onSubmit={handleQuizSubmit} />;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50/80 p-4 sm:p-6 font-sans text-slate-900">
@@ -350,7 +421,12 @@ export default function App() {
           <button
             type="button"
             disabled={!isReadyToStart}
-            onClick={() => alert("Starting Proctored Test! Good luck!")}
+            onClick={() => {
+              if (window.electronAPI && window.electronAPI.startTest) {
+                window.electronAPI.startTest();
+              }
+              setIsStarted(true);
+            }}
             className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all ${
               isReadyToStart
                 ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm cursor-pointer"
