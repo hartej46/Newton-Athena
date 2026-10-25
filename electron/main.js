@@ -9,6 +9,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow = null;
 let end_time = null;
+let isExamActive = false;
+let isQuitting = false;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -22,16 +24,68 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+
+    mainWindow.on('close', (e) => {
+        if (isExamActive && !isQuitting) {
+            e.preventDefault();
+            const choice = dialog.showMessageBoxSync(mainWindow, {
+                type: 'warning',
+                title: 'Quit Exam Warning',
+                message: 'Are you sure you want to quit the exam?',
+                detail: 'Leaving the application will automatically submit your quiz.',
+                buttons: ['Cancel & Continue Exam', 'Submit and Quit'],
+                defaultId: 0,
+                cancelId: 0,
+            });
+
+            if (choice === 1) {
+                isExamActive = false;
+                isQuitting = true;
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('force-submit');
+                }
+                setTimeout(() => {
+                    app.quit();
+                }, 400);
+            }
+        }
+    });
 }
 
 ipcMain.handle('full-screen', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setKiosk(true);
+            // mainWindow.setSimpleFullScreen(true)
+            mainWindow.setAlwaysOnTop(true, 'screen-saver');
+            mainWindow.setKiosk(true)
+        mainWindow.setVisibleOnAllWorkspaces(false);
+        if (process.platform === 'darwin') {
+            // Disable swipe between full-screen spaces on macOS
+            mainWindow.setFullScreenable(false);
+        }
     }
 });
 
 ipcMain.handle('start-test', () => {
     end_time = Date.now() + 60 * 60 * 1000;
+    isExamActive = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setKiosk(true);
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        mainWindow.setVisibleOnAllWorkspaces(false);
+    }
+});
+
+ipcMain.handle('exit-exam', () => {
+    end_time = null;
+    isExamActive = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setKiosk(false);
+        mainWindow.setFullScreen(false);
+        mainWindow.setAlwaysOnTop(false);
+        if (process.platform === 'darwin') {
+            mainWindow.setFullScreenable(true);
+        }
+    }
 });
 
 ipcMain.handle('get-time', () => {
@@ -83,6 +137,32 @@ app.whenReady().then(() => {
             createWindow();
         }
     });
+});
+
+app.on('before-quit', (e) => {
+    if (isExamActive && !isQuitting) {
+        e.preventDefault();
+        const choice = dialog.showMessageBoxSync(mainWindow || undefined, {
+            type: 'warning',
+            title: 'Quit Exam Warning',
+            message: 'Are you sure you want to quit the exam?',
+            detail: 'Leaving the application will automatically submit your quiz.',
+            buttons: ['Cancel & Continue Exam', 'Submit and Quit'],
+            defaultId: 0,
+            cancelId: 0,
+        });
+
+        if (choice === 1) {
+            isExamActive = false;
+            isQuitting = true;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('force-submit');
+            }
+            setTimeout(() => {
+                app.quit();
+            }, 400);
+        }
+    }
 });
 
 app.on('window-all-closed', () => {
