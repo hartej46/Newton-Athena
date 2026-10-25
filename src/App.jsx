@@ -88,8 +88,14 @@ export default function App() {
     }
   }, []);
 
-  // 3. Sync Fullscreen state if user presses 'Esc' key manually
   useEffect(() => {
+    if (window.electronAPI && window.electronAPI.onFullScreenChange) {
+      const unsubscribe = window.electronAPI.onFullScreenChange((isFull) => {
+        setIsFullScreen(Boolean(isFull));
+      });
+      return unsubscribe;
+    }
+
     const handleFullScreenChange = () => {
       setIsFullScreen(Boolean(document.fullscreenElement));
     };
@@ -100,7 +106,6 @@ export default function App() {
     };
   }, []);
 
-  // 4. Cleanup camera hardware tracks on component unmount
   useEffect(() => {
     return () => {
       if (streamRef.current) {
@@ -109,7 +114,6 @@ export default function App() {
     };
   }, []);
 
-  // 5. Countdown Timer Logic
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
@@ -127,14 +131,13 @@ export default function App() {
   const isReadyToStart = cameraStatus === "granted" && isFullScreen;
 
   const handleQuizSubmit = useCallback(async () => {
-    // 1. Turn off camera hardware stream
+
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     setCameraStatus("idle");
 
-    // 2. Turn off Electron proctoring/kiosk/lock
     if (window.electronAPI && window.electronAPI.exitExam) {
       await window.electronAPI.exitExam();
     }
@@ -165,21 +168,21 @@ export default function App() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6 text-slate-100 select-none">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center shadow-2xl">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50/80 p-6 text-slate-800 font-sans select-none">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-xs">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
             <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">
             Assessment Submitted
           </h2>
-          <p className="text-slate-400 text-sm leading-relaxed mb-6">
+          <p className="text-slate-500 text-sm leading-relaxed mb-6">
             Thanks for attempting! All proctoring and monitoring sessions have been automatically terminated.
           </p>
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">
+            <span className="w-2 h-2 rounded-full bg-emerald-600" />
             Proctoring Disengaged
           </div>
         </div>
