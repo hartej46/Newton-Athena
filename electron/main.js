@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, globalShortcut, Menu } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import process from 'node:process';
@@ -10,15 +10,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow = null;
 let end_time = null;
 let isExamActive = false;
+let isLockedFullScreen = false;
 let isQuitting = false;
 
 function createWindow() {
     const iconPath = path.join(__dirname, '../build/icon.png');
+    const hasIcon = fs.existsSync(iconPath);
 
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
-        icon: iconPath,
+        fullscreen: false,
+        fullscreenable: false,
+        simpleFullscreen: false,
+        ...(hasIcon ? { icon: iconPath } : {}),
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
             contextIsolation: true,
@@ -27,17 +32,22 @@ function createWindow() {
         },
     });
 
-    if (process.platform === 'darwin' && app.dock) {
-        app.dock.setIcon(iconPath);
+    if (process.platform === 'darwin' && app.dock && hasIcon) {
+        try {
+            app.dock.setIcon(iconPath);
+        } catch {
+        }
     }
 
+    const distPath = path.join(__dirname, '../dist/index.html');
     const devUrl = 'http://localhost:5173';
+
     if (!app.isPackaged) {
         mainWindow.loadURL(devUrl).catch(() => {
-            mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+            mainWindow.loadFile(distPath);
         });
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        mainWindow.loadFile(distPath);
     }
 
     mainWindow.on('enter-full-screen', () => {
@@ -52,8 +62,14 @@ function createWindow() {
         }
     });
 
+    // If the student tries a 3-finger swipe up (Mission Control) or loses focus,
+    // immediately snap focus back to the exam window
     mainWindow.on('blur', () => {
-        if (isExamActive && mainWindow && !mainWindow.isDestroyed()) {
+        if ((isExamActive || isLockedFullScreen) && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.moveTop();
+            if (process.platform === 'darwin') {
+                app.focus({ steal: true });
+            }
             mainWindow.focus();
         }
     });
@@ -61,72 +77,139 @@ function createWindow() {
     mainWindow.on('close', (e) => {
         if (isExamActive && !isQuitting) {
             e.preventDefault();
-            const choice = dialog.showMessageBoxSync(mainWindow, {
-                type: 'warning',
-                title: 'Quit Exam Warning',
-                message: 'Are you sure you want to quit the exam?',
-                detail: 'Leaving the application will automatically submit your quiz.',
-                buttons: ['Cancel & Continue Exam', 'Submit and Quit'],
-                defaultId: 0,
-                cancelId: 0,
-            });
-
-            if (choice === 1) {
-                isExamActive = false;
-                isQuitting = true;
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('force-submit');
-                }
-                setTimeout(() => {
-                    app.quit();
-                }, 400);
-            }
+            promptQuitExam();
         }
     });
 }
 
-ipcMain.handle('full-screen', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        const isCurrentFull = mainWindow.isFullScreen();
-        const nextState = !isCurrentFull;
-        mainWindow.setFullScreen(nextState);
-        return nextState;
+function lockExamWindow() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    isLockedFullScreen = true;
+
+    // Step 1: Pin the window to EVERY macOS Desktop/Space simultaneously!
+    // Even if a 3/4-finger swipe happens, the exam window is waiting on the other desktop too.
+    mainWindow.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true, // Prevents macOS from dropping the Dock/Menu lock
+    });
+
+    // Step 2: Manually cover the entire screen (including over the top Menu Bar and bottom Dock)
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { x, y, width, height } = primaryDisplay.bounds; // .bounds = full screen, not workArea!
+
+    mainWindow.setResizable(true);
+    mainWindow.setMovable(true);
+    mainWindow.setBounds({ x, y, width, height });
+    mainWindow.setResizable(false);
+    mainWindow.setMovable(false);
+
+    // Step 3: Activate Kiosk Mode (tells macOS NSApplication to block Mission Control & Cmd+Tab)
+    mainWindow.setKiosk(true);
+
+    // Step 4: Elevate above the macOS Menu Bar, Dock, and Notification Center
+    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+
+    // Step 5: Focus the window so macOS applies the Kiosk presentation flags immediately
+    mainWindow.moveTop();
+    if (process.platform === 'darwin') {
+        app.focus({ steal: true });
     }
-    return false;
+    mainWindow.focus();
+
+    mainWindow.webContents.send('fullscreen-change', true);
+}
+
+function unlockExamWindow() {
+    isExamActive = false;
+    isLockedFullScreen = false;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setVisibleOnAllWorkspaces(false);
+    mainWindow.setKiosk(false);
+    mainWindow.setResizable(true);
+    mainWindow.setMovable(true);
+    mainWindow.setSize(1200, 800);
+    mainWindow.center();
+
+    mainWindow.webContents.send('fullscreen-change', false);
+}
+
+ipcMain.handle('full-screen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+
+    if (isLockedFullScreen && !isExamActive) {
+        unlockExamWindow();
+        return false;
+    } else {
+        lockExamWindow();
+        return true;
+    }
 });
+
+function promptQuitExam() {
+    if (!isExamActive || isQuitting || !mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        title: 'Quit Exam Warning',
+        message: 'Are you sure you want to quit the exam?',
+        detail: 'Leaving the application will automatically submit your quiz.',
+        buttons: ['Cancel & Continue Exam', 'Submit and Quit'],
+        defaultId: 0,
+        cancelId: 0,
+    });
+
+    if (choice === 1) {
+        isExamActive = false;
+        isQuitting = true;
+        mainWindow.webContents.send('force-submit');
+        setTimeout(() => {
+            app.quit();
+        }, 400);
+    }
+}
 
 ipcMain.handle('start-test', () => {
     end_time = Date.now() + 60 * 60 * 1000;
     isExamActive = true;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setKiosk(true);
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-        mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-        mainWindow.focus();
 
-        if (process.platform === 'darwin') {
-            mainWindow.setMovable(false);
-            mainWindow.setResizable(false);
-            mainWindow.setFullScreenable(false);
-            mainWindow.setMaximizable(false);
-        }
+    lockExamWindow();
+
+    // Register Cmd+Q globally to catch it before macOS system menu
+    try {
+        globalShortcut.register('CommandOrControl+Q', () => {
+            promptQuitExam();
+        });
+        globalShortcut.register('CommandOrControl+W', () => {
+            promptQuitExam();
+        });
+    } catch {
+        // ignore shortcut error
     }
 });
 
 ipcMain.handle('exit-exam', () => {
     end_time = null;
     isExamActive = false;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setKiosk(false);
-        mainWindow.setFullScreen(false);
-        mainWindow.setAlwaysOnTop(false);
-        mainWindow.setVisibleOnAllWorkspaces(false);
 
-        mainWindow.setMovable(true);
-        mainWindow.setResizable(true);
-        mainWindow.setFullScreenable(true);
-        mainWindow.setMaximizable(true);
+    try {
+        globalShortcut.unregister('CommandOrControl+Q');
+        globalShortcut.unregister('CommandOrControl+W');
+    } catch {
+        // ignore
     }
+
+    unlockExamWindow();
+});
+
+ipcMain.handle('quit-app', () => {
+    isExamActive = false;
+    isQuitting = true;
+    app.quit();
 });
 
 ipcMain.handle('get-time', () => {
@@ -173,6 +256,12 @@ ipcMain.handle('show-rules', async () => {
 app.whenReady().then(() => {
     createWindow();
 
+    // Emergency shortcut while coding/testing: Press Cmd + Shift + X to unlock and quit!
+    globalShortcut.register('CommandOrControl+Shift+X', () => {
+        unlockExamWindow();
+        app.exit(0);
+    });
+
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
@@ -183,26 +272,7 @@ app.whenReady().then(() => {
 app.on('before-quit', (e) => {
     if (isExamActive && !isQuitting) {
         e.preventDefault();
-        const choice = dialog.showMessageBoxSync(mainWindow || undefined, {
-            type: 'warning',
-            title: 'Quit Exam Warning',
-            message: 'Are you sure you want to quit the exam?',
-            detail: 'Leaving the application will automatically submit your quiz.',
-            buttons: ['Cancel & Continue Exam', 'Submit and Quit'],
-            defaultId: 0,
-            cancelId: 0,
-        });
-
-        if (choice === 1) {
-            isExamActive = false;
-            isQuitting = true;
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('force-submit');
-            }
-            setTimeout(() => {
-                app.quit();
-            }, 400);
-        }
+        promptQuitExam();
     }
 });
 

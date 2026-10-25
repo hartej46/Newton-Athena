@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getRemainingTime: () => ipcRenderer.invoke("get-time"),
     startTest: () => ipcRenderer.invoke("start-test"),
     exitExam: () => ipcRenderer.invoke("exit-exam"),
+    quitApp: () => ipcRenderer.invoke("quit-app"),
     savePhoto: (arrayBuffer) => ipcRenderer.invoke("save-photo", arrayBuffer),
     onForceSubmit: (callback) => {
         ipcRenderer.on("force-submit", callback);

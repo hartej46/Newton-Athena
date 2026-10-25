@@ -166,6 +166,29 @@ export default function App() {
     }
   }, [handleQuizSubmit]);
 
+  // Auto-quit application 5 seconds after submission
+  const [autoQuitSeconds, setAutoQuitSeconds] = useState(5);
+  useEffect(() => {
+    if (!isSubmitted) return;
+
+    const timer = setInterval(() => {
+      setAutoQuitSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          if (window.electronAPI && window.electronAPI.quitApp) {
+            window.electronAPI.quitApp();
+          } else {
+            window.close();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isSubmitted]);
+
   if (isSubmitted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50/80 p-6 text-slate-800 font-sans select-none">
@@ -178,8 +201,11 @@ export default function App() {
           <h2 className="text-2xl font-bold text-slate-900 mb-2">
             Assessment Submitted
           </h2>
-          <p className="text-slate-500 text-sm leading-relaxed mb-6">
+          <p className="text-slate-500 text-sm leading-relaxed mb-4">
             Thanks for attempting! All proctoring and monitoring sessions have been automatically terminated.
+          </p>
+          <p className="text-xs text-slate-400 mb-6">
+            The application will automatically close in <strong className="text-slate-600 font-semibold">{autoQuitSeconds}s</strong>...
           </p>
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">
             <span className="w-2 h-2 rounded-full bg-emerald-600" />

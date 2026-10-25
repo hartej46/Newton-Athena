@@ -42,6 +42,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/**/*",
       "package.json"
     ],
     "mac": {
@@ -53,7 +54,9 @@
         }
       ],
       "category": "public.app-category.education",
-      "identity": null,
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
       "extendInfo": {
         "NSCameraUsageDescription": "AthenApp requires camera access for exam proctoring.",
         "NSMicrophoneUsageDescription": "AthenApp requires microphone access for exam proctoring."
