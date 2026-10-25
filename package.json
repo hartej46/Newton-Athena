@@ -1,32 +1,62 @@
 {
   "name": "athenapp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Proctored Exam Assessment Application",
+  "author": "Hartejsingh Sandhu",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
     "dev:electron": "ELECTRON_MIRROR=${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electron/} electron .",
     "dev:react": "vite",
     "build": "vite build",
+    "dist:mac": "npm run build && electron-builder --mac dmg",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.3",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "tailwindcss": "^4.3.3"
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.7.2",
+    "electron-builder": "^26.18.0",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.6",
     "globals": "^17.12.0",
+    "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"
+  },
+  "build": {
+    "appId": "com.hartej.athenapp",
+    "productName": "AthenApp",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "category": "public.app-category.education",
+      "identity": null,
+      "extendInfo": {
+        "NSCameraUsageDescription": "AthenApp requires camera access for exam proctoring.",
+        "NSMicrophoneUsageDescription": "AthenApp requires microphone access for exam proctoring."
+      }
+    }
   }
 }
