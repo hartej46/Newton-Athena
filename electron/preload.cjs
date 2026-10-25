@@ -11,4 +11,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.on("force-submit", callback);
         return () => ipcRenderer.removeListener("force-submit", callback);
     },
+    onFullScreenChange: (callback) => {
+        const handler = (_, isFull) => callback(isFull);
+        ipcRenderer.on("fullscreen-change", handler);
+        return () => ipcRenderer.removeListener("fullscreen-change", handler);
+    },
 });

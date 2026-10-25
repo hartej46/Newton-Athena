@@ -25,6 +25,24 @@ function createWindow() {
 
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 
+    mainWindow.on('enter-full-screen', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('fullscreen-change', true);
+        }
+    });
+
+    mainWindow.on('leave-full-screen', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('fullscreen-change', false);
+        }
+    });
+
+    mainWindow.on('blur', () => {
+        if (isExamActive && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.focus();
+        }
+    });
+
     mainWindow.on('close', (e) => {
         if (isExamActive && !isQuitting) {
             e.preventDefault();
@@ -54,15 +72,12 @@ function createWindow() {
 
 ipcMain.handle('full-screen', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-            // mainWindow.setSimpleFullScreen(true)
-            mainWindow.setAlwaysOnTop(true, 'screen-saver');
-            mainWindow.setKiosk(true)
-        mainWindow.setVisibleOnAllWorkspaces(false);
-        if (process.platform === 'darwin') {
-            // Disable swipe between full-screen spaces on macOS
-            mainWindow.setFullScreenable(false);
-        }
+        const isCurrentFull = mainWindow.isFullScreen();
+        const nextState = !isCurrentFull;
+        mainWindow.setFullScreen(nextState);
+        return nextState;
     }
+    return false;
 });
 
 ipcMain.handle('start-test', () => {
@@ -70,8 +85,16 @@ ipcMain.handle('start-test', () => {
     isExamActive = true;
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.setKiosk(true);
-        mainWindow.setAlwaysOnTop(true, 'screen-saver');
-        mainWindow.setVisibleOnAllWorkspaces(false);
+        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+        mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+        mainWindow.focus();
+
+        if (process.platform === 'darwin') {
+            mainWindow.setMovable(false);
+            mainWindow.setResizable(false);
+            mainWindow.setFullScreenable(false);
+            mainWindow.setMaximizable(false);
+        }
     }
 });
 
@@ -82,9 +105,12 @@ ipcMain.handle('exit-exam', () => {
         mainWindow.setKiosk(false);
         mainWindow.setFullScreen(false);
         mainWindow.setAlwaysOnTop(false);
-        if (process.platform === 'darwin') {
-            mainWindow.setFullScreenable(true);
-        }
+        mainWindow.setVisibleOnAllWorkspaces(false);
+
+        mainWindow.setMovable(true);
+        mainWindow.setResizable(true);
+        mainWindow.setFullScreenable(true);
+        mainWindow.setMaximizable(true);
     }
 });
 
