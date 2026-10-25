@@ -13,17 +13,32 @@ let isExamActive = false;
 let isQuitting = false;
 
 function createWindow() {
+    const iconPath = path.join(__dirname, '../build/icon.png');
+
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
+        icon: iconPath,
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
+            devTools: true
         },
     });
 
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    if (process.platform === 'darwin' && app.dock) {
+        app.dock.setIcon(iconPath);
+    }
+
+    const devUrl = 'http://localhost:5173';
+    if (!app.isPackaged) {
+        mainWindow.loadURL(devUrl).catch(() => {
+            mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        });
+    } else {
+        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    }
 
     mainWindow.on('enter-full-screen', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
