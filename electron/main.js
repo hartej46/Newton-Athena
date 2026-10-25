@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
-import { process } from 'node:process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +14,11 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.cjs'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
     });
 
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
