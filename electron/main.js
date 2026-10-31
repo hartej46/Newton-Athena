@@ -233,6 +233,26 @@ ipcMain.handle('save-photo', (_, arrayBuffer) => {
     return filePath;
 });
 
+ipcMain.handle('capture-both', async (_, userPhotoArrayBuffer) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return null;
+
+    const screenNativeImage = await mainWindow.webContents.capturePage();
+    const screenBuffer = screenNativeImage.toJPEG(80);
+
+    const userPhotoBuffer = userPhotoArrayBuffer ? Buffer.from(userPhotoArrayBuffer) : null;
+
+    console.log('[main.js] Both user photo and screen captured in memory:', {
+        userPhotoBytes: userPhotoBuffer ? userPhotoBuffer.length : 0,
+        screenBytes: screenBuffer ? screenBuffer.length : 0,
+        timestamp: new Date().toISOString()
+    });
+
+    return {
+        success: true,
+        capturedAt: Date.now()
+    };
+});
+
 ipcMain.handle('show-rules', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
         return 0;

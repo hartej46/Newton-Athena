@@ -72,7 +72,48 @@ export default function App() {
     }
   }, []);
 
-  // 2. Handle Fullscreen Toggle
+  const captureBothSnapshot = useCallback(async () => {
+    try {
+      let photoBuffer = null;
+      if (streamRef.current) {
+        const [videoTrack] = streamRef.current.getVideoTracks();
+        if (videoTrack && videoTrack.readyState === "live") {
+          const video = videoRef.current || document.createElement("video");
+          if (!videoRef.current) {
+            video.srcObject = streamRef.current;
+            video.muted = true;
+            await video.play().catch(() => {});
+          }
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.8));
+            if (blob) {
+              photoBuffer = await blob.arrayBuffer();
+            }
+          }
+        }
+      }
+
+      if (window.electronAPI && window.electronAPI.captureBoth) {
+        await window.electronAPI.captureBoth(photoBuffer);
+      }
+    } catch (err) {
+      console.error("Failed to capture snapshot:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.captureBothSnapshot = captureBothSnapshot;
+    return () => {
+      delete window.captureBothSnapshot;
+    };
+  }, [captureBothSnapshot]);
+
+
   const toggleFullScreen = useCallback(async () => {
     try {
       if (window.electronAPI && window.electronAPI.setFullScreen) {

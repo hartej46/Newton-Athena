@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     exitExam: () => ipcRenderer.invoke("exit-exam"),
     quitApp: () => ipcRenderer.invoke("quit-app"),
     savePhoto: (arrayBuffer) => ipcRenderer.invoke("save-photo", arrayBuffer),
+    captureBoth: (userPhoto) => ipcRenderer.invoke("capture-both", userPhoto),
     onForceSubmit: (callback) => {
         ipcRenderer.on("force-submit", callback);
         return () => ipcRenderer.removeListener("force-submit", callback);
